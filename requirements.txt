@@ -3,3 +3,5 @@ imageio-ffmpeg
 Pillow
 tkinterdnd2-universal
 static-ffmpeg
+mutagen
+plyer
