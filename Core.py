@@ -113,6 +113,67 @@ def estimate_audio_size(duration_sec: float, bitrate_str: str) -> float:
         logging.warning(f"Ошибка парсинга битрейта ({bitrate_str}): {e}")
         return 0.0
 
+def get_media_info(file_path: str) -> dict:
+    """Возвращает метаданные файла в виде словаря (длительность, битрейт, формат)."""
+    duration = get_media_duration(file_path)
+    return {
+        "duration": duration,
+        "format": os.path.splitext(file_path)[1].lower().replace(".", ""),
+    }
+
+
+def analyze_optimal_bitrate(file_path: str, target_format: str) -> dict:
+    """Анализирует исходный файл и возвращает рекомендацию по битрейту для конвертации."""
+    if not check_ffmpeg():
+        return {
+            "recommended_bitrate": "192k",
+            "reason": "FFmpeg недоступен. Выставлен стандартный битрейт.",
+        }
+
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=bit_rate",
+            "-of", "json",
+            file_path,
+        ]
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+
+        if streams and "bit_rate" in streams[0]:
+            src_bitrate_bps = int(streams[0]["bit_rate"])
+            src_kbps = src_bitrate_bps // 1000
+
+            # Защита от избыточного увеличения битрейта (Up-sampling)
+            if src_kbps <= 140:
+                rec = "128k"
+            elif src_kbps <= 180:
+                rec = "160k"
+            elif src_kbps <= 220:
+                rec = "192k"
+            elif src_kbps <= 280:
+                rec = "256k"
+            else:
+                rec = "320k"
+
+            reason = f"Исходный битрейт ~{src_kbps} kbps. Рекомендуется {rec}, чтобы не завышать размер без улучшения качества."
+        else:
+            rec = "192k"
+            reason = "Не удалось точно определить исходный битрейт. Выставлено 192k."
+
+        return {"recommended_bitrate": rec, "reason": reason}
+
+    except Exception as e:
+        logging.warning(f"Ошибка анализа битрейта для {file_path}: {e}")
+        return {
+            "recommended_bitrate": "192k",
+            "reason": "Ошибка анализа файла. Выставлен стандартный параметр 192k.",
+        }
 
 def detect_file_type(file_paths: list) -> str:
     has_audio_or_video = False

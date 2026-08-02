@@ -26,7 +26,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         logging.info("Инициализация главного окна приложения")
         self.title("Универсальный Конвертер")
         self.geometry("540x280")
-        self.resizable(False, False)
+        self.resizable(True, True)
 
         self.file_configs = []
         self.current_mode = None
@@ -241,6 +241,19 @@ class AudioImageConverterGUI(CTkWithDnD):
                 "Не удалось инициализировать FFmpeg. Проверьте подключение к сети для первичной загрузки.",
             )
 
+    def _parse_time_to_seconds(self, time_str: str) -> float:
+        if not time_str.strip():
+            return 0.0
+        pattern = r"^(\d{1,2}:)?([0-5]?\d):([0-5]?\d)$"
+        if not re.match(pattern, time_str.strip()):
+            return -1.0
+        parts = list(map(int, time_str.strip().split(":")))
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        return -1.0
+
     def select_files(self):
         files = filedialog.askopenfilenames(
             title="Выберите файлы",
@@ -349,18 +362,8 @@ class AudioImageConverterGUI(CTkWithDnD):
             )
             btn_remove.pack(side="right", padx=5)
 
-            combo_fmt = ctk.CTkOptionMenu(
-                top_row,
-                values=supported_formats,
-                width=75,
-                command=lambda val, config=item: self._on_track_format_change(
-                    config, val
-                ),
-            )
-            combo_fmt.set(item["format"])
-            combo_fmt.pack(side="right", padx=5)
-
             if self.current_mode == "audio":
+                # Меню формата и битрейта в верхней строке справа
                 combo_bit = ctk.CTkOptionMenu(
                     top_row,
                     values=["128k", "192k", "256k", "320k"],
@@ -370,16 +373,21 @@ class AudioImageConverterGUI(CTkWithDnD):
                     ),
                 )
                 combo_bit.set(item["bitrate"])
-                combo_bit.pack(side="right", padx=5)
+                combo_bit.pack(side="right", padx=2)
                 item["widget_bitrate"] = combo_bit
 
-                lbl_est_size = ctk.CTkLabel(
-                    top_row, text="~0 MB", font=ctk.CTkFont(size=11), text_color="gray"
+                combo_fmt = ctk.CTkOptionMenu(
+                    top_row,
+                    values=supported_formats,
+                    width=75,
+                    command=lambda val, config=item: self._on_track_format_change(
+                        config, val
+                    ),
                 )
-                lbl_est_size.pack(side="right", padx=5)
-                item["widget_size_label"] = lbl_est_size
-                self._recalc_size_label(item)
+                combo_fmt.set(item["format"])
+                combo_fmt.pack(side="right", padx=2)
 
+                # Нижняя строка: Срез слева | Расчетный размер | Кнопка Авто | Кнопка Теги
                 bottom_row = ctk.CTkFrame(track_frame, fg_color="transparent")
                 bottom_row.pack(fill="x", padx=5, pady=(0, 4))
 
@@ -388,26 +396,64 @@ class AudioImageConverterGUI(CTkWithDnD):
 
                 entry_start = ctk.CTkEntry(bottom_row, width=65, placeholder_text="00:00:00")
                 entry_start.pack(side="left", padx=2)
-                entry_start.bind("<KeyRelease>", lambda e, c=item, w=entry_start: c.update({"start_time": w.get()}))
+                entry_start.insert(0, item["start_time"])
+                entry_start.bind("<KeyRelease>", lambda e, c=item, w=entry_start: c.update({"start_time": w.get().strip()}))
 
                 lbl_dash = ctk.CTkLabel(bottom_row, text="-")
                 lbl_dash.pack(side="left")
 
                 entry_end = ctk.CTkEntry(bottom_row, width=65, placeholder_text="00:00:00")
                 entry_end.pack(side="left", padx=2)
-                entry_end.bind("<KeyRelease>", lambda e, c=item, w=entry_end: c.update({"end_time": w.get()}))
+                entry_end.insert(0, item["end_time"])
+                entry_end.bind("<KeyRelease>", lambda e, c=item, w=entry_end: c.update({"end_time": w.get().strip()}))
 
+                # Кнопка тегов самая правая
                 btn_tags = ctk.CTkButton(
                     bottom_row,
                     text="🏷️ Теги MP3",
                     width=85,
                     height=24,
                     fg_color="gray40",
+                    state="normal" if item["format"] == "mp3" else "disabled",
                     command=lambda c=item: self.open_tags_popup(c),
                 )
                 btn_tags.pack(side="right", padx=5)
+                item["widget_btn_tags"] = btn_tags
+
+                # Кнопка авто левее от тегов (находится прямо под выбором битрейта)
+                btn_analyze = ctk.CTkButton(
+                    bottom_row,
+                    text="💡 Авто",
+                    width=80,
+                    height=24,
+                    font=ctk.CTkFont(size=11),
+                    fg_color="#2b5b84",
+                    hover_color="#1d3d59",
+                    command=lambda c=item: self._auto_analyze_track(c),
+                )
+                btn_analyze.pack(side="right", padx=2)
+                item["widget_btn_analyze"] = btn_analyze
+
+                lbl_est_size = ctk.CTkLabel(
+                    bottom_row, text="~0 MB", font=ctk.CTkFont(size=11), text_color="gray"
+                )
+                lbl_est_size.pack(side="right", padx=(0, 10))
+                item["widget_size_label"] = lbl_est_size
+
+                self._recalc_size_label(item)
 
             elif self.current_mode == "image":
+                combo_fmt = ctk.CTkOptionMenu(
+                    top_row,
+                    values=supported_formats,
+                    width=75,
+                    command=lambda val, config=item: self._on_track_format_change(
+                        config, val
+                    ),
+                )
+                combo_fmt.set(item["format"])
+                combo_fmt.pack(side="right", padx=5)
+
                 chk_meta = ctk.CTkCheckBox(
                     top_row,
                     text="Очистить EXIF",
@@ -418,7 +464,24 @@ class AudioImageConverterGUI(CTkWithDnD):
                 )
                 chk_meta.pack(side="right", padx=5)
 
+    def _auto_analyze_track(self, config_dict: dict):
+        res = Core.analyze_optimal_bitrate(config_dict["path"], config_dict["format"])
+        recommended_bitrate = res["recommended_bitrate"]
+
+        config_dict["bitrate"] = recommended_bitrate
+        if "widget_bitrate" in config_dict and config_dict["widget_bitrate"]:
+            config_dict["widget_bitrate"].set(recommended_bitrate)
+
+        self._recalc_size_label(config_dict)
+        messagebox.showinfo(
+            "Анализ битрейта",
+            f"Файл: {os.path.basename(config_dict['path'])}\n\n{res['reason']}",
+        )
+
     def open_tags_popup(self, config_item):
+        if config_item["format"] != "mp3":
+            return
+
         popup = ctk.CTkToplevel(self)
         popup.title("Редактор MP3 тегов")
         popup.geometry("320x240")
@@ -454,11 +517,17 @@ class AudioImageConverterGUI(CTkWithDnD):
 
     def _on_track_format_change(self, config_dict: dict, new_format: str):
         config_dict["format"] = new_format
+
+        is_raw = new_format in ["wav", "flac"]
         if "widget_bitrate" in config_dict and config_dict["widget_bitrate"]:
-            if new_format in ["wav", "flac"]:
-                config_dict["widget_bitrate"].configure(state="disabled")
-            else:
-                config_dict["widget_bitrate"].configure(state="normal")
+            config_dict["widget_bitrate"].configure(state="disabled" if is_raw else "normal")
+
+        if "widget_btn_analyze" in config_dict and config_dict["widget_btn_analyze"]:
+            config_dict["widget_btn_analyze"].configure(state="disabled" if is_raw else "normal")
+
+        if "widget_btn_tags" in config_dict and config_dict["widget_btn_tags"]:
+            config_dict["widget_btn_tags"].configure(state="normal" if new_format == "mp3" else "disabled")
+
         self._recalc_size_label(config_dict)
 
     def _on_bitrate_change(self, config_dict: dict, new_bitrate: str):
@@ -526,6 +595,37 @@ class AudioImageConverterGUI(CTkWithDnD):
         if not self.file_configs:
             return
 
+        for item in self.file_configs:
+            file_name = os.path.basename(item["path"])
+
+            if not os.path.exists(item["path"]):
+                messagebox.showerror("Ошибка", f"Файл не найден:\n{file_name}")
+                return
+
+            if self.current_mode == "audio":
+                s_sec = self._parse_time_to_seconds(item["start_time"])
+                e_sec = self._parse_time_to_seconds(item["end_time"])
+
+                if s_sec == -1.0:
+                    messagebox.showerror(
+                        "Ошибка среза",
+                        f"Файл {file_name}:\nНеверный формат времени начала (используйте ЧЧ:ММ:СС или ММ:СС)",
+                    )
+                    return
+                if e_sec == -1.0:
+                    messagebox.showerror(
+                        "Ошибка среза",
+                        f"Файл {file_name}:\nНеверный формат времени конца (используйте ЧЧ:ММ:СС или ММ:СС)",
+                    )
+                    return
+
+                if s_sec > 0 and e_sec > 0 and s_sec >= e_sec:
+                    messagebox.showerror(
+                        "Ошибка логики",
+                        f"Файл {file_name}:\nВремя начала не может быть больше или равно времени конца!",
+                    )
+                    return
+
         self.btn_reset.configure(state="disabled")
         self.btn_convert.configure(state="disabled")
         self.btn_browse_dir.configure(state="disabled")
@@ -536,6 +636,12 @@ class AudioImageConverterGUI(CTkWithDnD):
 
     def _run_conversion(self):
         output_dir = self.entry_outdir.get().strip() or None
+
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except Exception as e:
+                logging.error(f"Не удалось создать директорию {output_dir}: {e}")
 
         def update_progress(current, total, file_name):
             self.status_label.configure(
