@@ -23,21 +23,20 @@ class AudioImageConverterGUI(CTkWithDnD):
     def __init__(self):
         super().__init__()
 
-        self.title("Универсальный Конвертер Pro")
+        self.title("Универсальный Конвертер")
         self.geometry("540x280")
         self.resizable(False, False)
 
         self.file_configs = []
         self.current_mode = None
         self.last_output_dir = None
-        self._drag_enter_count = 0          # счётчик событий DragEnter/DragLeave
-        self._default_border = None         # исходный цвет рамки
-        self._default_fg = None             # исходный цвет фона
+        self._drag_enter_count = 0
+        self._default_border = None
+        self._default_fg = None
 
         self._build_header()
         self._build_ui()
 
-        # Регистрация приема файлов после инициализации UI
         self.after(200, self._setup_dnd)
         self.after(300, self._check_environment)
 
@@ -47,7 +46,7 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.lbl_app_title = ctk.CTkLabel(
             self.header_frame,
-            text="Media Converter Pro",
+            text="Media Converter",
             font=ctk.CTkFont(size=14, weight="bold"),
         )
         self.lbl_app_title.pack(side="left")
@@ -66,9 +65,6 @@ class AudioImageConverterGUI(CTkWithDnD):
             ctk.set_appearance_mode("Light")
 
     def _build_ui(self):
-        # ======================================================================
-        # ЗОНА СБРОСА (с поддержкой подсветки)
-        # ======================================================================
         self._default_border = ("gray70", "gray30")
         self._default_fg = ("gray90", "gray15")
 
@@ -77,7 +73,7 @@ class AudioImageConverterGUI(CTkWithDnD):
             corner_radius=15,
             border_width=2,
             border_color=self._default_border,
-            fg_color=self._default_fg
+            fg_color=self._default_fg,
         )
         self.drop_frame.pack(fill="both", expand=True, padx=20, pady=15)
 
@@ -99,28 +95,29 @@ class AudioImageConverterGUI(CTkWithDnD):
         )
         self.btn_select.pack(pady=(10, 15))
 
-        # ======================================================================
-        # ЗОНА НАСТРОЕК
-        # ======================================================================
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
 
         self.tracks_scroll_frame = ctk.CTkScrollableFrame(
             self.settings_frame,
             height=200,
-            label_text="Индивидуальная настройка файлов (Параллельная обработка)",
+            label_text="Настройки файлов",
         )
         self.tracks_scroll_frame.pack(fill="x", padx=5, pady=5)
 
         self.global_params_frame = ctk.CTkFrame(self.settings_frame)
         self.global_params_frame.pack(fill="x", padx=5, pady=5)
 
-        self.lbl_outdir = ctk.CTkLabel(self.global_params_frame, text="Сохранить в:")
+        self.lbl_outdir = ctk.CTkLabel(
+            self.global_params_frame, text="Сохранить в:"
+        )
         self.lbl_outdir.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         self.entry_outdir = ctk.CTkEntry(
             self.global_params_frame, placeholder_text="Рядом с исходниками"
         )
-        self.entry_outdir.grid(row=0, column=1, padx=(10, 5), pady=5, sticky="ew")
+        self.entry_outdir.grid(
+            row=0, column=1, padx=(10, 5), pady=5, sticky="ew"
+        )
 
         self.btn_browse_dir = ctk.CTkButton(
             self.global_params_frame,
@@ -159,7 +156,8 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.btn_convert = ctk.CTkButton(
             self.action_btn_frame,
-            text="Начать параллельную конвертацию",
+            text="Старт",
+            width=120,
             fg_color="green",
             hover_color="darkgreen",
             command=self.start_conversion_thread,
@@ -167,7 +165,6 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.btn_convert.pack(side="right", padx=10)
 
     def _setup_dnd(self):
-        """Привязка событий DragEnter, DragLeave и Drop к целевым виджетам."""
         targets = [self.drop_frame, self.lbl_drop_icon, self.lbl_drop_text]
 
         for target in targets:
@@ -180,27 +177,22 @@ class AudioImageConverterGUI(CTkWithDnD):
                 print(f"Ошибка привязки DnD: {e}")
 
     def _on_drag_enter(self, event):
-        """Подсветка зоны сброса синим цветом при входе перетаскиваемого файла."""
         if self._drag_enter_count == 0:
             self.drop_frame.configure(
-                border_color="dodgerblue",
-                fg_color=("lightblue", "darkblue")
+                border_color="dodgerblue", fg_color=("lightblue", "darkblue")
             )
         self._drag_enter_count += 1
 
     def _on_drag_leave(self, event):
-        """Возврат исходного стиля, когда файл покидает зону сброса."""
         self._drag_enter_count = max(0, self._drag_enter_count - 1)
         if self._drag_enter_count == 0:
             self._reset_drop_style()
 
     def _reset_drop_style(self):
-        """Сброс оформления зоны сброса на исходное."""
         self.drop_frame.configure(
-            border_color=self._default_border,
-            fg_color=self._default_fg
+            border_color=self._default_border, fg_color=self._default_fg
         )
-        self._drag_enter_count = 0   # гарантированный сброс счётчика
+        self._drag_enter_count = 0
 
     def _parse_dnd_paths(self, raw_data: str) -> list:
         if not raw_data:
@@ -229,8 +221,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         return paths
 
     def _on_file_drop(self, event):
-        """Обработка события Drop с восстановлением стиля."""
-        self._reset_drop_style()  # убираем подсветку после сброса
+        self._reset_drop_style()
 
         raw_files = self._parse_dnd_paths(event.data)
 
@@ -246,7 +237,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         if not Core.check_ffmpeg():
             messagebox.showwarning(
                 "Внимание",
-                "FFmpeg не обнаружен. Конвертация видео/аудио может не работать.",
+                "Не удалось инициализировать FFmpeg. Проверьте подключение к сети для первичной загрузки.",
             )
 
     def select_files(self):
@@ -255,9 +246,12 @@ class AudioImageConverterGUI(CTkWithDnD):
             filetypes=[
                 (
                     "Все поддерживаемые",
-                    "*.mp3 *.wav *.ogg *.flac *.m4a *.jpg *.jpeg *.png *.webp *.bmp",
+                    "*.mp3 *.wav *.ogg *.flac *.m4a *.mp4 *.mkv *.avi *.mov *.flv *.wmv *.webm *.jpg *.jpeg *.png *.webp *.bmp",
                 ),
-                ("Аудиофайлы", "*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma *.opus"),
+                (
+                    "Аудио и Видео",
+                    "*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma *.opus *.mp4 *.mkv *.avi *.mov *.flv *.wmv *.webm",
+                ),
                 ("Изображения", "*.jpg *.jpeg *.png *.webp *.bmp *.ico *.tiff"),
                 ("Все файлы", "*.*"),
             ],
@@ -271,13 +265,13 @@ class AudioImageConverterGUI(CTkWithDnD):
         if file_type == "mixed":
             messagebox.showerror(
                 "Ошибка выбора",
-                "Вы закинули одновременно и аудио, и картинки!\n\nЗагружайте файлы одного типа за раз.",
+                "Вы закинули одновременно медиафайлы (видео/аудио) и картинки!\n\nЗагружайте файлы одного типа за раз.",
             )
             return
         elif file_type == "unknown":
             messagebox.showerror(
                 "Ошибка формата",
-                "Среди выбранных нет поддерживаемых аудио или картинок.",
+                "Среди выбранных нет поддерживаемых аудио, видео или картинок.",
             )
             return
 
@@ -287,7 +281,12 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.file_configs = []
         for path in file_list:
             self.file_configs.append(
-                {"path": path, "format": default_fmt, "bitrate": "192k"}
+                {
+                    "path": path,
+                    "format": default_fmt,
+                    "bitrate": "192k",
+                    "strip_metadata": False,
+                }
             )
 
         self.update_tracks_list()
@@ -306,7 +305,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         for item in self.file_configs:
             path = item["path"]
             file_name = os.path.basename(path)
-            ext = os.path.splitext(file_name)[1].upper().replace(".", "")
+            ext = os.path.splitext(file_name)[1].lower()
 
             try:
                 size_mb = os.path.getsize(path) / (1024 * 1024)
@@ -319,10 +318,17 @@ class AudioImageConverterGUI(CTkWithDnD):
             )
             track_frame.pack(fill="x", pady=3, padx=2)
 
-            icon = "🎵" if self.current_mode == "audio" else "🖼️"
+            # Выбор иконки
+            if ext in Core.SUPPORTED_VIDEO_EXT:
+                icon = "🎬"
+            elif ext in Core.SUPPORTED_AUDIO_EXT:
+                icon = "🎵"
+            else:
+                icon = "🖼️"
+
             lbl_info = ctk.CTkLabel(
                 track_frame,
-                text=f"{icon} {file_name}\n   [{ext} | {size_str}]",
+                text=f"{icon} {file_name}\n   [{ext.upper().replace('.', '')} | {size_str}]",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 justify="left",
                 width=180,
@@ -351,20 +357,32 @@ class AudioImageConverterGUI(CTkWithDnD):
             combo_fmt.set(item["format"])
             combo_fmt.pack(side="right", padx=5)
 
-            combo_bit = None
             if self.current_mode == "audio":
                 combo_bit = ctk.CTkOptionMenu(
                     track_frame,
                     values=["128k", "192k", "256k", "320k"],
                     width=85,
-                    command=lambda val, config=item: config.update({"bitrate": val}),
+                    command=lambda val, config=item: config.update(
+                        {"bitrate": val}
+                    ),
                 )
                 combo_bit.set(item["bitrate"])
                 if item["format"] in ["wav", "flac"]:
                     combo_bit.configure(state="disabled")
                 combo_bit.pack(side="right", padx=5)
-
-            item["widget_bitrate"] = combo_bit
+                item["widget_bitrate"] = combo_bit
+            elif self.current_mode == "image":
+                chk_meta = ctk.CTkCheckBox(
+                    track_frame,
+                    text="Очистить EXIF",
+                    width=100,
+                    command=lambda config=item: config.update(
+                        {"strip_metadata": not config["strip_metadata"]}
+                    ),
+                )
+                if item["strip_metadata"]:
+                    chk_meta.select()
+                chk_meta.pack(side="right", padx=5)
 
     def _on_track_format_change(self, config_dict: dict, new_format: str):
         config_dict["format"] = new_format
@@ -394,7 +412,7 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.btn_open_dir.pack_forget()
         self.status_label.configure(
-            text="Готов к параллельной конвертации", text_color="gray"
+            text="Готов к работе", text_color="gray"
         )
         self.progressbar.set(0)
 
@@ -411,7 +429,9 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.drop_frame.pack(fill="both", expand=True, padx=20, pady=15)
 
     def select_output_dir(self):
-        directory = filedialog.askdirectory(title="Выберите папку для сохранения")
+        directory = filedialog.askdirectory(
+            title="Выберите папку для сохранения"
+        )
         if directory:
             self.entry_outdir.delete(0, "end")
             self.entry_outdir.insert(0, directory)
@@ -438,7 +458,7 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         def update_progress(current, total, file_name):
             self.status_label.configure(
-                text=f"Параллельная обработка ({current}/{total}): {file_name}"
+                text=f"Обработка ({current}/{total}): {file_name}"
             )
             self.progressbar.set(current / total)
 
@@ -472,7 +492,7 @@ class AudioImageConverterGUI(CTkWithDnD):
                 text="Все файлы успешно обработаны!", text_color="#2FA572"
             )
             messagebox.showinfo(
-                "Успех", "Многопоточная конвертация успешно завершена!"
+                "Успех", "Готово! Все файлы обработаны."
             )
 
 
