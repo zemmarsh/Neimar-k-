@@ -49,6 +49,42 @@
 - Обработка медиа: static-ffmpeg, imageio-ffmpeg, Pillow, mutagen
 
 - Системные уведомления: plyer
+
+---
+
+## Наглядный путь работы:
+1. Аудио/Видео
+``` text
+[ Пользователь ] 
+       │ (Drag-and-Drop / Выбор файлов)
+       ▼
+[ GUI.py ]
+       │ 1. Анализ типа файлов (detect_file_type)
+       │ 2. Предпрослушивание (Pygame) / Редактирование MP3 тегов
+       │ 3. Автоанализ битрейта (ffprobe via Core.py)
+       ▼
+[ ThreadPoolExecutor (Core.py) ] ── (Параллельные задачи)
+       │
+       ├─► [ FFmpeg Subprocess ] ──► Обрезка (-ss/-to) ──► Извлечение звука/Конвертация
+       │                                                              │
+       ├─► [ Mutagen (EasyID3/ID3) ] ◄── Запись тегов и обложки ──────┘
+       ▼
+[ Сохранение результата ] ──► [ RotatingFileHandler (logs/app.log) ] ──► [ System Notification (Plyer) ]
+```
+2. Изображение
+``` text
+[ Файл изображения ]
+       │
+       ▼
+[ Core.convert_image() ]
+       │
+       ├─► Strip EXIF = True  ──► [ Перенос сырых пикселей PIL (Clean Image) ] ──┐
+       │                                                                          ├─► [ Сохранение в целевой формат ]
+       └─► Strip EXIF = False ──► [ Стандартное сохранение Pillow (With EXIF) ]  ──┘
+```
+
+---
+
 ## Поддерживаемые форматы
 
 | Категория         | Входные форматы                                                                                   | Доступные форматы для конвертации |
