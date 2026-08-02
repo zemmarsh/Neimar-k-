@@ -1,2 +1,4 @@
 customtkinter
 imageio-ffmpeg
+Pillow
+tkinterdnd2-universal

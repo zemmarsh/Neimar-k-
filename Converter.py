@@ -3,200 +3,323 @@ import threading
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-# Импортируем логику ядра
+from tkinterdnd2 import DND_FILES, TkinterDnD
+
 import Core
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
 
-class AudioConverterGUI(ctk.CTk):
+class AudioImageConverterGUI(ctk.CTk):
 
-  def __init__(self):
-    super().__init__()
+    def __init__(self):
+        super().__init__()
 
-    self.title("Аудио Конвертер")
-    self.geometry("580x470")
-    self.resizable(False, False)
+        # Быстрая инициализация окна без блокировок
+        self.title("Универсальный Конвертер")
+        self.geometry("450x250")
+        self.resizable(False, False)
 
-    self.selected_files = []
+        self.selected_files = []
+        self.current_mode = None
 
-    self._build_ui()
-    self._check_environment()
+        self._build_ui()
 
-  def _build_ui(self):
-    # === Заголовок ===
-    self.title_label = ctk.CTkLabel(
-        self, text="Аудио Конвертер", font=ctk.CTkFont(size=22, weight="bold")
-    )
-    self.title_label.pack(pady=(15, 10))
+        # Отложенный вызов подгрузки тяжелых компонентов (10 мс и 100 мс)
+        self.after(10, self._init_dnd_lazy)
+        self.after(100, self._check_environment)
 
-    # === Выбор файлов ===
-    self.file_frame = ctk.CTkFrame(self)
-    self.file_frame.pack(padx=20, pady=5, fill="x")
+    def _init_dnd_lazy(self):
+        """Ленивая подгрузка Drag-and-Drop."""
+        try:
+            TkinterDnD._require(self)
+            self.drop_frame.drop_target_register(DND_FILES)
+            self.drop_frame.dnd_bind("<<Drop>>", self._on_file_drop)
+        except Exception as e:
+            print(f"Предупреждение: DnD недоступен: {e}")
 
-    self.btn_select = ctk.CTkButton(
-        self.file_frame, text="Выбрать файлы", command=self.select_files
-    )
-    self.btn_select.pack(side="left", padx=10, pady=10)
+    def _check_environment(self):
+        """Быстрая фоновая проверка наличия FFmpeg."""
+        if not Core.check_ffmpeg():
+            messagebox.showwarning(
+                "Внимание",
+                "FFmpeg не обнаружен. Конвертация видео/аудио может не работать.",
+            )
 
-    self.lbl_files_count = ctk.CTkLabel(
-        self.file_frame, text="Файлы не выбраны", text_color="gray"
-    )
-    self.lbl_files_count.pack(side="left", padx=10, pady=10)
+    def _build_ui(self):
+        # ======================================================================
+        # ЭТАП 1: ЗОНА ВЫБОРА / СБРОСА ФАЙЛОВ
+        # ======================================================================
+        self.drop_frame = ctk.CTkFrame(
+            self,
+            corner_radius=15,
+            border_width=2,
+            border_color=("gray70", "gray30"),
+        )
+        self.drop_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-    # === Настройки конвертации ===
-    self.settings_frame = ctk.CTkFrame(self)
-    self.settings_frame.pack(padx=20, pady=10, fill="x")
+        self.lbl_drop_icon = ctk.CTkLabel(
+            self.drop_frame, text="📁", font=ctk.CTkFont(size=40)
+        )
+        self.lbl_drop_icon.pack(pady=(25, 5))
 
-    # Целевой формат
-    self.lbl_format = ctk.CTkLabel(self.settings_frame, text="Формат:")
-    self.lbl_format.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        self.lbl_drop_text = ctk.CTkLabel(
+            self.drop_frame,
+            text="Перетащите файлы сюда\nили выберите через кнопку",
+            font=ctk.CTkFont(size=14),
+            justify="center",
+        )
+        self.lbl_drop_text.pack(pady=5)
 
-    self.combo_format = ctk.CTkOptionMenu(
-        self.settings_frame, values=Core.SUPPORTED_FORMATS
-    )
-    self.combo_format.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-    self.combo_format.set("mp3")
+        self.btn_select = ctk.CTkButton(
+            self.drop_frame, text="Выбрать файлы", command=self.select_files
+        )
+        self.btn_select.pack(pady=(10, 20))
 
-    # Битрейт
-    self.lbl_bitrate = ctk.CTkLabel(self.settings_frame, text="Битрейт:")
-    self.lbl_bitrate.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        # ======================================================================
+        # ЭТАП 2: НАСТРОЙКИ И КОНВЕРТАЦИЯ
+        # ======================================================================
+        self.settings_frame = ctk.CTkFrame(self)
 
-    self.combo_bitrate = ctk.CTkOptionMenu(
-        self.settings_frame, values=["128k", "192k", "256k", "320k"]
-    )
-    self.combo_bitrate.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
-    self.combo_bitrate.set("192k")
+        self.lbl_files_info = ctk.CTkLabel(
+            self.settings_frame,
+            text="",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        self.lbl_files_info.grid(
+            row=0, column=0, columnspan=3, padx=10, pady=(10, 5), sticky="w"
+        )
 
-    # Папка сохранения
-    self.lbl_outdir = ctk.CTkLabel(self.settings_frame, text="Сохранить в:")
-    self.lbl_outdir.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        # Выбор формата
+        self.lbl_format = ctk.CTkLabel(self.settings_frame, text="Формат:")
+        self.lbl_format.grid(row=1, column=0, padx=10, pady=5, sticky="w")
 
-    self.entry_outdir = ctk.CTkEntry(
-        self.settings_frame, placeholder_text="Рядом с исходным файлом"
-    )
-    self.entry_outdir.grid(row=2, column=1, padx=(10, 5), pady=10, sticky="ew")
+        self.combo_format = ctk.CTkOptionMenu(
+            self.settings_frame,
+            values=[],
+            command=self._on_format_change,  # Динамически скрывает битрейт
+        )
+        self.combo_format.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
 
-    self.btn_browse_dir = ctk.CTkButton(
-        self.settings_frame,
-        text="Обзор",
-        width=60,
-        command=self.select_output_dir,
-    )
-    self.btn_browse_dir.grid(row=2, column=2, padx=(0, 10), pady=10)
+        # Настройка битрейта (скрывается когда не нужна)
+        self.lbl_bitrate = ctk.CTkLabel(self.settings_frame, text="Битрейт:")
+        self.combo_bitrate = ctk.CTkOptionMenu(
+            self.settings_frame, values=["128k", "192k", "256k", "320k"]
+        )
+        self.combo_bitrate.set("192k")
 
-    self.settings_frame.grid_columnconfigure(1, weight=1)
+        # Папка сохранения
+        self.lbl_outdir = ctk.CTkLabel(self.settings_frame, text="Сохранить в:")
+        self.lbl_outdir.grid(row=3, column=0, padx=10, pady=5, sticky="w")
 
-    # === Прогресс и Статус ===
-    self.status_label = ctk.CTkLabel(
-        self, text="Готов к работе", text_color="gray"
-    )
-    self.status_label.pack(pady=(10, 5))
+        self.entry_outdir = ctk.CTkEntry(
+            self.settings_frame, placeholder_text="Рядом с исходниками"
+        )
+        self.entry_outdir.grid(row=3, column=1, padx=(10, 5), pady=5, sticky="ew")
 
-    self.progressbar = ctk.CTkProgressBar(self, width=440)
-    self.progressbar.pack(pady=5)
-    self.progressbar.set(0)
+        self.btn_browse_dir = ctk.CTkButton(
+            self.settings_frame,
+            text="Обзор",
+            width=60,
+            command=self.select_output_dir,
+        )
+        self.btn_browse_dir.grid(row=3, column=2, padx=(0, 10), pady=5)
 
-    # === Кнопка старта ===
-    self.btn_convert = ctk.CTkButton(
-        self,
-        text="Начать конвертацию",
-        fg_color="green",
-        hover_color="darkgreen",
-        command=self.start_conversion_thread,
-    )
-    self.btn_convert.pack(pady=15)
+        self.settings_frame.grid_columnconfigure(1, weight=1)
 
-  def _check_environment(self):
-    if not Core.check_ffmpeg():
-      messagebox.showerror(
-          "Ошибка окружения",
-          "FFmpeg не обнаружен в вашей системе!\n\n"
-          "Установите FFmpeg и добавьте его в системные переменные PATH, "
-          "иначе конвертация будет невозможна.",
-      )
+        # Прогресс
+        self.status_label = ctk.CTkLabel(
+            self, text="Готов к работе", text_color="gray"
+        )
+        self.progressbar = ctk.CTkProgressBar(self, width=440)
+        self.progressbar.set(0)
 
-  def select_files(self):
-    files = filedialog.askopenfilenames(
-        title="Выберите аудиофайлы",
-        filetypes=[
-            (
-                "Аудиофайлы",
-                "*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma *.opus *.ape",
-            ),
-            ("Все файлы", "*.*"),
-        ],
-    )
-    if files:
-      self.selected_files = list(files)
-      count = len(self.selected_files)
-      self.lbl_files_count.configure(
-          text=f"Выбрано файлов: {count}", text_color="white"
-      )
-      self.status_label.configure(text="Готов к конвертации", text_color="gray")
+        # Кнопки действия
+        self.action_btn_frame = ctk.CTkFrame(self, fg_color="transparent")
 
-  def select_output_dir(self):
-    directory = filedialog.askdirectory(title="Выберите папку для сохранения")
-    if directory:
-      self.entry_outdir.delete(0, "end")
-      self.entry_outdir.insert(0, directory)
+        self.btn_reset = ctk.CTkButton(
+            self.action_btn_frame,
+            text="← Выбрать другие",
+            fg_color="transparent",
+            border_width=1,
+            text_color=("black", "white"),
+            command=self.reset_to_first_step,
+        )
+        self.btn_reset.pack(side="left", padx=10)
 
-  def start_conversion_thread(self):
-    if not self.selected_files:
-      messagebox.showwarning(
-          "Внимание", "Пожалуйста, выберите файлы для конвертации!"
-      )
-      return
+        self.btn_convert = ctk.CTkButton(
+            self.action_btn_frame,
+            text="Начать конвертацию",
+            fg_color="green",
+            hover_color="darkgreen",
+            command=self.start_conversion_thread,
+        )
+        self.btn_convert.pack(side="right", padx=10)
 
-    self.btn_select.configure(state="disabled")
-    self.btn_convert.configure(state="disabled")
-    self.btn_browse_dir.configure(state="disabled")
-    self.progressbar.set(0)
+    def _on_file_drop(self, event):
+        data = event.data
+        if data.startswith("{") and data.endswith("}"):
+            data = data[1:-1]
 
-    threading.Thread(target=self._run_conversion, daemon=True).start()
+        raw_files = self.tk.splitlist(data)
+        self.process_selected_files(raw_files)
 
-  def _run_conversion(self):
-    target_format = self.combo_format.get()
-    bitrate = self.combo_bitrate.get()
-    output_dir = self.entry_outdir.get().strip() or None
+    def select_files(self):
+        files = filedialog.askopenfilenames(
+            title="Выберите файлы",
+            filetypes=[
+                (
+                    "Все поддерживаемые",
+                    "*.mp3 *.wav *.ogg *.flac *.m4a *.jpg *.jpeg *.png *.webp *.bmp",
+                ),
+                ("Аудиофайлы", "*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.wma *.opus"),
+                ("Изображения", "*.jpg *.jpeg *.png *.webp *.bmp *.ico *.tiff"),
+                ("Все файлы", "*.*"),
+            ],
+        )
+        if files:
+            self.process_selected_files(list(files))
 
-    def update_progress(current, total, file_name):
-      self.status_label.configure(
-          text=f"Обработка ({current}/{total}): {file_name}"
-      )
-      self.progressbar.set(current / total)
+    def process_selected_files(self, file_list: list):
+        file_type = Core.detect_file_type(file_list)
 
-    successful, errors = Core.batch_convert_audio(
-        files=self.selected_files,
-        output_format=target_format,
-        output_dir=output_dir,
-        bitrate=bitrate,
-        progress_callback=update_progress,
-    )
+        if file_type == "mixed":
+            messagebox.showerror(
+                "Ошибка выбора",
+                "Вы закинули одновременно и аудио, и картинки!\n\nЗагружайте файлы одного типа за раз.",
+            )
+            return
+        elif file_type == "unknown":
+            messagebox.showerror(
+                "Ошибка формата",
+                "Среди выбранных нет поддерживаемых аудио или картинок.",
+            )
+            return
 
-    self.btn_select.configure(state="normal")
-    self.btn_convert.configure(state="normal")
-    self.btn_browse_dir.configure(state="normal")
+        self.selected_files = file_list
+        self.current_mode = file_type
+        count = len(self.selected_files)
 
-    if errors:
-      self.status_label.configure(
-          text=f"Завершено с ошибками ({len(errors)})", text_color="orange"
-      )
-      err_details = "\n".join(
-          [f"- {os.path.basename(f)}: {e}" for f, e in errors[:3]]
-      )
-      messagebox.showwarning(
-          "Ошибки при обработке",
-          f"Успешно: {len(successful)}\nОшибок: {len(errors)}\n\nДетали:\n{err_details}",
-      )
-    else:
-      self.status_label.configure(
-          text="Конвертация успешно завершена!", text_color="#2FA572"
-      )
-      messagebox.showinfo("Успех", "Все файлы успешно обработаны!")
+        if self.current_mode == "audio":
+            self.lbl_files_info.configure(
+                text=f"🎵 Выбрано аудиофайлов: {count}", text_color="#2FA572"
+            )
+            self.combo_format.configure(values=Core.SUPPORTED_AUDIO_FORMATS)
+            self.combo_format.set("mp3")
+        elif self.current_mode == "image":
+            self.lbl_files_info.configure(
+                text=f"🖼️ Выбрано картинок: {count}", text_color="#3B8ED0"
+            )
+            self.combo_format.configure(values=Core.SUPPORTED_IMAGE_FORMATS)
+            self.combo_format.set("png")
+
+        # Обновляем видимость битрейта
+        self._on_format_change(self.combo_format.get())
+        self.show_second_step()
+
+    def _on_format_change(self, selected_format: str):
+        """Скрывает битрейт для картинок и несжимаемых аудио (WAV, FLAC)."""
+        if self.current_mode == "audio" and selected_format not in ["wav", "flac"]:
+            self.lbl_bitrate.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+            self.combo_bitrate.grid(row=2, column=1, padx=10, pady=5, sticky="ew")
+        else:
+            self.lbl_bitrate.grid_forget()
+            self.combo_bitrate.grid_forget()
+
+    def show_second_step(self):
+        self.drop_frame.pack_forget()
+
+        # Если битрейт скрыт, делаем окно чуть компактнее
+        window_height = (
+            "360"
+            if (
+                self.current_mode == "audio"
+                and self.combo_format.get() not in ["wav", "flac"]
+            )
+            else "320"
+        )
+        self.geometry(f"520x{window_height}")
+
+        self.settings_frame.pack(padx=20, pady=(15, 5), fill="x")
+        self.status_label.pack(pady=(10, 2))
+        self.progressbar.pack(pady=5)
+        self.action_btn_frame.pack(pady=15, fill="x")
+
+        self.status_label.configure(text="Готов к конвертации", text_color="gray")
+        self.progressbar.set(0)
+
+    def reset_to_first_step(self):
+        self.settings_frame.pack_forget()
+        self.status_label.pack_forget()
+        self.progressbar.pack_forget()
+        self.action_btn_frame.pack_forget()
+
+        self.selected_files = []
+        self.current_mode = None
+
+        self.geometry("450x250")
+        self.drop_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+    def select_output_dir(self):
+        directory = filedialog.askdirectory(title="Выберите папку для сохранения")
+        if directory:
+            self.entry_outdir.delete(0, "end")
+            self.entry_outdir.insert(0, directory)
+
+    def start_conversion_thread(self):
+        if not self.selected_files:
+            return
+
+        self.btn_reset.configure(state="disabled")
+        self.btn_convert.configure(state="disabled")
+        self.btn_browse_dir.configure(state="disabled")
+        self.progressbar.set(0)
+
+        threading.Thread(target=self._run_conversion, daemon=True).start()
+
+    def _run_conversion(self):
+        target_format = self.combo_format.get()
+        bitrate = self.combo_bitrate.get()
+        output_dir = self.entry_outdir.get().strip() or None
+
+        def update_progress(current, total, file_name):
+            self.status_label.configure(
+                text=f"Обработка ({current}/{total}): {file_name}"
+            )
+            self.progressbar.set(current / total)
+
+        successful, errors = Core.batch_convert(
+            files=self.selected_files,
+            output_format=target_format,
+            output_dir=output_dir,
+            bitrate=bitrate,
+            progress_callback=update_progress,
+        )
+
+        self.btn_reset.configure(state="normal")
+        self.btn_convert.configure(state="normal")
+        self.btn_browse_dir.configure(state="normal")
+
+        if errors:
+            self.status_label.configure(
+                text=f"Завершено с ошибками ({len(errors)})",
+                text_color="orange",
+            )
+            err_details = "\n".join(
+                [f"- {os.path.basename(f)}: {e}" for f, e in errors[:3]]
+            )
+            messagebox.showwarning(
+                "Ошибки при обработке",
+                f"Успешно: {len(successful)}\nОшибок: {len(errors)}\n\nДетали:\n{err_details}",
+            )
+        else:
+            self.status_label.configure(
+                text="Все файлы успешно обработаны!", text_color="#2FA572"
+            )
+            messagebox.showinfo("Успех", "Конвертация успешно завершена!")
 
 
 if __name__ == "__main__":
-  app = AudioConverterGUI()
-  app.mainloop()
+    app = AudioImageConverterGUI()
+    app.mainloop()
