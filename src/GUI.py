@@ -6,6 +6,8 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from plyer import notification
+from PIL import Image, ImageDraw
+import pygame
 
 import Core
 
@@ -24,24 +26,37 @@ class AudioImageConverterGUI(CTkWithDnD):
         super().__init__()
 
         logging.info("Инициализация главного окна приложения")
-        self.title("Универсальный Конвертер")
-        self.geometry("540x280")
-        if os.path.exists("../ICON.ico"):
-            self.iconbitmap("ICON.ico")
+        self.title("Universal Converter")
+        self.geometry("560x300")
         self.resizable(True, True)
+
+        # Инициализация звукового движка pygame
+        try:
+            pygame.mixer.init()
+        except Exception as e:
+            logging.warning(f"Не удалось инициализировать pygame.mixer: {e}")
 
         self.file_configs = []
         self.current_mode = None
         self.last_output_dir = None
+        self.current_playing_path = None
+        self.is_playing = False
         self._drag_enter_count = 0
         self._default_border = None
         self._default_fg = None
 
+        self._set_app_icon()
         self._build_header()
         self._build_ui()
 
         self.after(200, self._setup_dnd)
         self.after(300, self._check_environment)
+
+    def _set_app_icon(self):
+        try:
+            self.iconbitmap("ICON.ico")
+        except Exception as e:
+            logging.warning(f"Не удалось установить иконку приложения: {e}")
 
     def _build_header(self):
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -49,8 +64,8 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.lbl_app_title = ctk.CTkLabel(
             self.header_frame,
-            text="Universal Converter",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            text="⚡ Universal Converter",
+            font=ctk.CTkFont(size=16, weight="bold"),
         )
         self.lbl_app_title.pack(side="left")
 
@@ -81,20 +96,20 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.drop_frame.pack(fill="both", expand=True, padx=20, pady=15)
 
         self.lbl_drop_icon = ctk.CTkLabel(
-            self.drop_frame, text="📁", font=ctk.CTkFont(size=40)
+            self.drop_frame, text="📁", font=ctk.CTkFont(size=42)
         )
         self.lbl_drop_icon.pack(pady=(20, 5))
 
         self.lbl_drop_text = ctk.CTkLabel(
             self.drop_frame,
             text="Перетащите файлы сюда\nили выберите через кнопку",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=14, weight="bold"),
             justify="center",
         )
         self.lbl_drop_text.pack(pady=5)
 
         self.btn_select = ctk.CTkButton(
-            self.drop_frame, text="Выбрать файлы", command=self.select_files
+            self.drop_frame, text="✨ Выбрать файлы", command=self.select_files, font=ctk.CTkFont(weight="bold")
         )
         self.btn_select.pack(pady=(10, 15))
 
@@ -103,7 +118,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.tracks_scroll_frame = ctk.CTkScrollableFrame(
             self.settings_frame,
             height=260,
-            label_text="Настройки файлов",
+            label_text="Настройки и список файлов",
         )
         self.tracks_scroll_frame.pack(fill="x", padx=5, pady=5)
 
@@ -111,7 +126,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.global_params_frame.pack(fill="x", padx=5, pady=5)
 
         self.lbl_outdir = ctk.CTkLabel(
-            self.global_params_frame, text="Сохранить в:"
+            self.global_params_frame, text="Сохранить в:", font=ctk.CTkFont(weight="bold")
         )
         self.lbl_outdir.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
@@ -124,8 +139,8 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.btn_browse_dir = ctk.CTkButton(
             self.global_params_frame,
-            text="Обзор",
-            width=60,
+            text="📂 Обзор",
+            width=70,
             command=self.select_output_dir,
         )
         self.btn_browse_dir.grid(row=0, column=2, padx=(0, 10), pady=5)
@@ -152,17 +167,18 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.btn_open_dir = ctk.CTkButton(
             self.action_btn_frame,
-            text="📁 Открыть папку",
+            text="📂 Открыть папку",
             fg_color="#3B8ED0",
             command=self.open_output_folder,
         )
 
         self.btn_convert = ctk.CTkButton(
             self.action_btn_frame,
-            text="Старт",
-            width=120,
-            fg_color="green",
-            hover_color="darkgreen",
+            text="🚀 Старт",
+            width=130,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#2FA572",
+            hover_color="#1E7A52",
             command=self.start_conversion_thread,
         )
         self.btn_convert.pack(side="right", padx=10)
@@ -240,7 +256,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         if not Core.check_ffmpeg():
             messagebox.showwarning(
                 "Внимание",
-                "Не удалось инициализировать FFmpeg. Проверьте подключение к сети для первичной загрузки.",
+                "Не удалось инициализировать FFmpeg. Проверьте бинарные файлы в папке приложения.",
             )
 
     def _parse_time_to_seconds(self, time_str: str) -> float:
@@ -287,7 +303,7 @@ class AudioImageConverterGUI(CTkWithDnD):
             )
             return
         elif file_type == "unknown":
-            logging.warning("Пользователь выбрал неполдерживаемые форматы.")
+            logging.warning("Пользователь выбрал поддерживаемые форматы.")
             messagebox.showerror(
                 "Ошибка формата",
                 "Среди выбранных нет поддерживаемых аудио, видео или картинок.",
@@ -319,6 +335,30 @@ class AudioImageConverterGUI(CTkWithDnD):
 
         self.update_tracks_list()
         self.show_second_step()
+
+    def toggle_audio_preview(self, file_path: str, btn_widget: ctk.CTkButton):
+        """Воспроизводит или останавливает предпрослушивание файла."""
+        try:
+            if self.is_playing and self.current_playing_path == file_path:
+                pygame.mixer.music.stop()
+                self.is_playing = False
+                self.current_playing_path = None
+                btn_widget.configure(text="▶ Плеер", fg_color="#3B8ED0")
+                return
+
+            if self.is_playing:
+                pygame.mixer.music.stop()
+                self.update_tracks_list()  # Сброс остальных кнопок
+
+            pygame.mixer.music.load(file_path)
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.current_playing_path = file_path
+            btn_widget.configure(text="⏸ Пауза", fg_color="#D32F2F")
+
+        except Exception as e:
+            logging.error(f"Ошибка воспроизведения аудио {file_path}: {e}")
+            messagebox.showerror("Ошибка плеера", "Не удалось воспроизвести данный файл.")
 
     def update_tracks_list(self):
         for widget in self.tracks_scroll_frame.winfo_children():
@@ -365,7 +405,6 @@ class AudioImageConverterGUI(CTkWithDnD):
             btn_remove.pack(side="right", padx=5)
 
             if self.current_mode == "audio":
-                # Меню формата и битрейта в верхней строке справа
                 combo_bit = ctk.CTkOptionMenu(
                     top_row,
                     values=["128k", "192k", "256k", "320k"],
@@ -389,31 +428,42 @@ class AudioImageConverterGUI(CTkWithDnD):
                 combo_fmt.set(item["format"])
                 combo_fmt.pack(side="right", padx=2)
 
-                # Нижняя строка: Срез слева | Расчетный размер | Кнопка Авто | Кнопка Теги
                 bottom_row = ctk.CTkFrame(track_frame, fg_color="transparent")
                 bottom_row.pack(fill="x", padx=5, pady=(0, 4))
 
-                lbl_trim = ctk.CTkLabel(bottom_row, text="Срез:", font=ctk.CTkFont(size=11))
-                lbl_trim.pack(side="left", padx=(5, 2))
+                # Кнопка предпрослушивания слева
+                btn_play = ctk.CTkButton(
+                    bottom_row,
+                    text="⏸ Пауза" if (self.is_playing and self.current_playing_path == path) else "▶ Плеер",
+                    width=70,
+                    height=24,
+                    fg_color="#D32F2F" if (self.is_playing and self.current_playing_path == path) else "#3B8ED0",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                )
+                btn_play.configure(command=lambda p=path, b=btn_play: self.toggle_audio_preview(p, b))
+                btn_play.pack(side="left", padx=(5, 10))
 
-                entry_start = ctk.CTkEntry(bottom_row, width=65, placeholder_text="00:00:00")
+                lbl_trim = ctk.CTkLabel(bottom_row, text="Срез:", font=ctk.CTkFont(size=11))
+                lbl_trim.pack(side="left", padx=(2, 2))
+
+                entry_start = ctk.CTkEntry(bottom_row, width=60, placeholder_text="00:00")
                 entry_start.pack(side="left", padx=2)
                 entry_start.insert(0, item["start_time"])
-                entry_start.bind("<KeyRelease>", lambda e, c=item, w=entry_start: c.update({"start_time": w.get().strip()}))
+                entry_start.bind("<KeyRelease>",
+                                 lambda e, c=item, w=entry_start: c.update({"start_time": w.get().strip()}))
 
                 lbl_dash = ctk.CTkLabel(bottom_row, text="-")
                 lbl_dash.pack(side="left")
 
-                entry_end = ctk.CTkEntry(bottom_row, width=65, placeholder_text="00:00:00")
+                entry_end = ctk.CTkEntry(bottom_row, width=60, placeholder_text="00:00")
                 entry_end.pack(side="left", padx=2)
                 entry_end.insert(0, item["end_time"])
                 entry_end.bind("<KeyRelease>", lambda e, c=item, w=entry_end: c.update({"end_time": w.get().strip()}))
 
-                # Кнопка тегов самая правая
                 btn_tags = ctk.CTkButton(
                     bottom_row,
-                    text="🏷️ Теги MP3",
-                    width=85,
+                    text="🏷️ Теги",
+                    width=75,
                     height=24,
                     fg_color="gray40",
                     state="normal" if item["format"] == "mp3" else "disabled",
@@ -422,11 +472,10 @@ class AudioImageConverterGUI(CTkWithDnD):
                 btn_tags.pack(side="right", padx=5)
                 item["widget_btn_tags"] = btn_tags
 
-                # Кнопка авто левее от тегов (находится прямо под выбором битрейта)
                 btn_analyze = ctk.CTkButton(
                     bottom_row,
                     text="💡 Авто",
-                    width=80,
+                    width=70,
                     height=24,
                     font=ctk.CTkFont(size=11),
                     fg_color="#2b5b84",
@@ -439,7 +488,7 @@ class AudioImageConverterGUI(CTkWithDnD):
                 lbl_est_size = ctk.CTkLabel(
                     bottom_row, text="~0 MB", font=ctk.CTkFont(size=11), text_color="gray"
                 )
-                lbl_est_size.pack(side="right", padx=(0, 10))
+                lbl_est_size.pack(side="right", padx=(0, 5))
                 item["widget_size_label"] = lbl_est_size
 
                 self._recalc_size_label(item)
@@ -458,7 +507,7 @@ class AudioImageConverterGUI(CTkWithDnD):
 
                 chk_meta = ctk.CTkCheckBox(
                     top_row,
-                    text="Очистить EXIF",
+                    text="Очистить EXIF (Метаданные)",
                     width=100,
                     command=lambda config=item: config.update(
                         {"strip_metadata": not config["strip_metadata"]}
@@ -549,6 +598,10 @@ class AudioImageConverterGUI(CTkWithDnD):
                 )
 
     def remove_track(self, file_path):
+        if self.is_playing and self.current_playing_path == file_path:
+            pygame.mixer.music.stop()
+            self.is_playing = False
+
         self.file_configs = [
             item for item in self.file_configs if item["path"] != file_path
         ]
@@ -559,7 +612,7 @@ class AudioImageConverterGUI(CTkWithDnD):
 
     def show_second_step(self):
         self.drop_frame.pack_forget()
-        self.geometry("680x560")
+        self.geometry("700x580")
 
         self.settings_frame.pack(padx=15, pady=(5, 5), fill="x")
         self.status_label.pack(pady=(5, 2))
@@ -571,6 +624,10 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.progressbar.set(0)
 
     def reset_to_first_step(self):
+        if self.is_playing:
+            pygame.mixer.music.stop()
+            self.is_playing = False
+
         self.settings_frame.pack_forget()
         self.status_label.pack_forget()
         self.progressbar.pack_forget()
@@ -579,7 +636,7 @@ class AudioImageConverterGUI(CTkWithDnD):
         self.file_configs = []
         self.current_mode = None
 
-        self.geometry("540x280")
+        self.geometry("560x300")
         self.drop_frame.pack(fill="both", expand=True, padx=20, pady=15)
 
     def select_output_dir(self):
@@ -596,6 +653,10 @@ class AudioImageConverterGUI(CTkWithDnD):
     def start_conversion_thread(self):
         if not self.file_configs:
             return
+
+        if self.is_playing:
+            pygame.mixer.music.stop()
+            self.is_playing = False
 
         for item in self.file_configs:
             file_name = os.path.basename(item["path"])
