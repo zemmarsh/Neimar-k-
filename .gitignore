@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+
+venv/
+.venv/
+
+.vscode/
+.idea/
+
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.m4a
+*.aac
