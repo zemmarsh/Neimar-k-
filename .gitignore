@@ -11,7 +11,7 @@ venv/
 .idea/
 
 # Local binaries & OS files
-ffmpeg.exe
+src/ffmpeg.exe
 .DS_Store
 Thumbs.db
 
