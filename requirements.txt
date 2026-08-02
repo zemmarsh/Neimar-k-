@@ -5,3 +5,4 @@ tkinterdnd2-universal
 static-ffmpeg
 mutagen
 plyer
+pygame
